@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/isaacthajunior/url-shortener/internal/sendJson"
+	"golang.org/x/net/publicsuffix"
 )
 
 type Param struct {
@@ -50,5 +51,55 @@ func normalizeAndValidateUrl(rawString string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	// 3. Validate the domain has a valid TLD using publicsuffix
+	if err := validateDomainTLD(parsedUrl.Host); err != nil {
+		return "", err
+	}
+
 	return parsedUrl.String(), nil
+}
+
+func validateDomainTLD(host string) error {
+	// Remove port if present
+	host = strings.Split(host, ":")[0]
+
+	// Check if it's an IP address (skip TLD validation for IPs)
+	if isIPAddress(host) {
+		return nil // IP addresses are valid even without TLD
+	}
+
+	// Must have at least one dot for a domain
+	if !strings.Contains(host, ".") {
+		return fmt.Errorf("domain must have a TLD (e.g., .com, .org)")
+	}
+
+	// Get the public suffix
+	suffix, icann := publicsuffix.PublicSuffix(host)
+
+	// Check if it's a valid public suffix
+	if suffix == "" {
+		return fmt.Errorf("invalid or missing domain extension")
+	}
+
+	// Option A: Require ICANN-managed TLDs only
+	if !icann {
+		return fmt.Errorf("domain extension '%s' is not a standard TLD", suffix)
+	}
+
+	return nil
+}
+
+// Helper function to check if host is an IP address
+func isIPAddress(host string) bool {
+	// Simple check - if it consists of numbers and dots, likely an IP
+	// For more accurate checking, you could use net.ParseIP
+	for _, part := range strings.Split(host, ".") {
+		for _, c := range part {
+			if c < '0' || c > '9' {
+				return false
+			}
+		}
+	}
+	return strings.Count(host, ".") == 3 // IPv4 has 3 dots
 }
