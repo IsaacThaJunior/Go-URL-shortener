@@ -1,6 +1,7 @@
 package shortenUrl
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -31,7 +32,13 @@ func HandleShorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	shortCode, err := shortCodeGenerator(7)
+	if err != nil {
+		sendJson.RespondWithError(w, http.StatusInternalServerError, "An error occured", err)
+		return
+	}
 	fmt.Println(urlString)
+	fmt.Println(shortCode)
 
 }
 
@@ -77,7 +84,6 @@ func validateDomainTLD(host string) error {
 	// Get the public suffix
 	suffix, icann := publicsuffix.PublicSuffix(host)
 
-	// Check if it's a valid public suffix
 	if suffix == "" {
 		return fmt.Errorf("invalid or missing domain extension")
 	}
@@ -93,8 +99,7 @@ func validateDomainTLD(host string) error {
 // Helper function to check if host is an IP address
 func isIPAddress(host string) bool {
 	// Simple check - if it consists of numbers and dots, likely an IP
-	// For more accurate checking, you could use net.ParseIP
-	for _, part := range strings.Split(host, ".") {
+	for part := range strings.SplitSeq(host, ".") {
 		for _, c := range part {
 			if c < '0' || c > '9' {
 				return false
@@ -102,4 +107,21 @@ func isIPAddress(host string) bool {
 		}
 	}
 	return strings.Count(host, ".") == 3 // IPv4 has 3 dots
+}
+
+const base62Chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+func shortCodeGenerator(n int) (string, error) {
+	randomBytes := make([]byte, n)
+
+	_, err := rand.Read(randomBytes)
+	if err != nil {
+		return "", err
+	}
+
+	for i := range n {
+		randomBytes[i] = base62Chars[int(randomBytes[i])%len(base62Chars)]
+	}
+
+	return string(randomBytes), nil
 }
