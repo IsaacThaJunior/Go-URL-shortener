@@ -41,7 +41,7 @@ func (h *Handler) HandleShorten(w http.ResponseWriter, r *http.Request) {
 	}
 
 	const maxRetries = 3
-	const myDomain = "isaac.edu/"
+	const myDomain = "http://localhost:8080/"
 
 	for range maxRetries {
 		shortCode, err := shortCodeGenerator(7)
@@ -59,7 +59,7 @@ func (h *Handler) HandleShorten(w http.ResponseWriter, r *http.Request) {
 		// No error → break out and return success later
 		if err == nil {
 			sendJson.RespondWithJSON(w, http.StatusOK, map[string]string{
-				"short_url": "https://" + myDomain + shortCode,
+				"short_url": myDomain + shortCode,
 			})
 			return
 		}
@@ -92,7 +92,7 @@ func (h *Handler) HandleShorten(w http.ResponseWriter, r *http.Request) {
 			}
 
 			sendJson.RespondWithJSON(w, http.StatusOK, map[string]string{
-				"short_url": "https://" + myDomain + existing.ShortCode,
+				"short_url": myDomain + existing.ShortCode,
 			})
 
 			log.Println("The URL is not new. We have already generated a code for it before")
