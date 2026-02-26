@@ -4,19 +4,27 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
 
+	"github.com/google/uuid"
+	"github.com/isaacthajunior/url-shortener/internal/database"
 	"github.com/isaacthajunior/url-shortener/internal/sendJson"
+	"github.com/lib/pq"
 	"golang.org/x/net/publicsuffix"
 )
+
+type Handler struct {
+	DB *database.Queries
+}
 
 type Param struct {
 	Url string `json:"url"`
 }
 
-func HandleShorten(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleShorten(w http.ResponseWriter, r *http.Request) {
 	// Parse request body
 	var url Param
 	err := json.NewDecoder(r.Body).Decode(&url)
@@ -32,13 +40,71 @@ func HandleShorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shortCode, err := shortCodeGenerator(7)
-	if err != nil {
-		sendJson.RespondWithError(w, http.StatusInternalServerError, "An error occured", err)
-		return
+	const maxRetries = 3
+	const myDomain = "isaac.edu/"
+
+	for range maxRetries {
+		shortCode, err := shortCodeGenerator(7)
+		if err != nil {
+			sendJson.RespondWithError(w, http.StatusInternalServerError, "Failed to generate short code", err)
+			return
+		}
+
+		_, err = h.DB.CreateUrl(r.Context(), database.CreateUrlParams{
+			ID:          uuid.New(),
+			OriginalUrl: urlString,
+			ShortCode:   shortCode,
+		})
+
+		// No error → break out and return success later
+		if err == nil {
+			sendJson.RespondWithJSON(w, http.StatusOK, map[string]string{
+				"short_url": "https://" + myDomain + shortCode,
+			})
+			return
+		}
+
+		pqErr, ok := err.(*pq.Error)
+		if !ok {
+			sendJson.RespondWithError(w, http.StatusInternalServerError, "Database error", err)
+			return
+		}
+
+		if pqErr.Code != "23505" {
+			sendJson.RespondWithError(w, http.StatusInternalServerError, "Database error", err)
+			return
+		}
+
+		// Unique violation — determine which constraint
+		switch pqErr.Constraint {
+
+		case "urls_short_code_key":
+			// collision → retry
+			continue
+
+		case "urls_original_url_key":
+			// URL already exists → fetch and return
+
+			existing, err := h.DB.GetUrlByOriginalUrl(r.Context(), urlString)
+			if err != nil {
+				sendJson.RespondWithError(w, http.StatusInternalServerError, "Failed to fetch existing URL", err)
+				return
+			}
+
+			sendJson.RespondWithJSON(w, http.StatusOK, map[string]string{
+				"short_url": "https://" + myDomain + existing.ShortCode,
+			})
+
+			log.Println("The URL is not new. We have already generated a code for it before")
+			return
+
+		default:
+			sendJson.RespondWithError(w, http.StatusInternalServerError, "Database error", err)
+			return
+		}
 	}
-	fmt.Println(urlString)
-	fmt.Println(shortCode)
+
+	sendJson.RespondWithError(w, http.StatusInternalServerError, "Failed to generate unique short code", nil)
 
 }
 
@@ -48,6 +114,9 @@ func normalizeAndValidateUrl(rawString string) (string, error) {
 	if u == "" {
 		return "", fmt.Errorf("empty URL")
 	}
+
+	// turn to lowercase
+	u = strings.ToLower(u)
 
 	// 2. Add https:// if missing
 	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
