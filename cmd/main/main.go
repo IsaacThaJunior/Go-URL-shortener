@@ -37,6 +37,7 @@ func main() {
 	})
 
 	mux.HandleFunc("POST /shorten", shortenHandler.HandleShorten)
+	mux.HandleFunc("GET /{code}", shortenHandler.Getcompletelink)
 
 	server := &http.Server{
 		Addr:    ":" + port,
