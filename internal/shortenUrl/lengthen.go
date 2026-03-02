@@ -24,5 +24,5 @@ func (h *Handler) Getcompletelink(w http.ResponseWriter, r *http.Request) {
 		"original_url": url.OriginalUrl,
 	})
 
-	http.Redirect(w, r, url.OriginalUrl, http.StatusFound)
+	// http.Redirect(w, r, url.OriginalUrl, http.StatusFound)
 }
